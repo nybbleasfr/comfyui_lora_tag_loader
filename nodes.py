@@ -9,13 +9,14 @@ import comfy.utils
 
 class LoraTagLoader:
     def __init__(self):
-        self.tag_pattern = "\<[0-9a-zA-Z\:\_\-\.\s\/\(\)\\\\]+\>"
+        self.tag_pattern: re.Pattern = re.compile("\<lora:[^\>]+\>")
 
     @classmethod
     def INPUT_TYPES(s):
         return {"required": { "model": ("MODEL",),
                               "clip": ("CLIP", ),
-                              "text": ("STRING", {"multiline": True}),
+                              "text": ("STRING", {"multiline": True})
+                            }, "optional": {
                               "normalize_weight":   ("FLOAT", {"default":  0, "min": 0, "max": 100.0, "step": 0.01, "round": 0.01}),
                               }}
     RETURN_TYPES = ("MODEL", "CLIP", "STRING")
@@ -27,7 +28,7 @@ class LoraTagLoader:
     def load_lora(self, model, clip, text, normalize_weight):
         # print(f"\nLoraTagLoader input text: { text }")
 
-        founds = re.findall(self.tag_pattern, text)
+        founds = self.tag_pattern.findall(text)
         # print(f"\nfoound lora tags: { founds }")
 
         if len(founds) < 1:
@@ -46,22 +47,24 @@ class LoraTagLoader:
         lora_files = folder_paths.get_filename_list("loras")
         for f in founds:
             tag = f[1:-1]
-            pak = tag.split(":")
-            type = pak[0]
+            pak: list[str] = tag.split(":")
+            type = pak.pop(0)
             if type != 'lora':
                 continue
             name = None
-            if len(pak) > 1 and len(pak[1]) > 0:
-                name = pak[1]
+            if len(pak) > 0 and len(pak[0]) > 0:
+                name = pak.pop(0)
             else:
                 continue
-            wModel = wClip = 0
+            wModel: float = 0.0
+            wClip: float = 0.0
             try:
-                if len(pak) > 2 and len(pak[2]) > 0:
-                    wModel = float(pak[2])
+                if len(pak) > 0 and len(pak[0]) > 0:
+                    wModel = float(pak.pop(0))
+                if len(pak) > 0 and len(pak[0]) > 0:
+                    wClip = float(pak.pop(0))
+                else:
                     wClip = wModel
-                if len(pak) > 3 and len(pak[3]) > 0:
-                    wClip = float(pak[3])
             except ValueError:
                 continue
             if name == None:
@@ -75,7 +78,7 @@ class LoraTagLoader:
                 print(f"bypassed lora tag: { (type, name, wModel, wClip) } >> { lora_name }")
                 continue
             
-            if wClip != 0 or wModel != 0:
+            if wClip != 0.0 or wModel != 0.0:
                 max_clip += abs(wClip)
                 max_weight += abs(wModel)
                 
@@ -95,7 +98,7 @@ class LoraTagLoader:
             print(f"Applying LORA tag: { l } weight={ round(final_weight, 3) } clip={ round(final_clip, 3) }")
             model_lora, clip_lora = LoraLoader().load_lora(model_lora, clip_lora, l, final_weight, final_clip)
 
-        plain_prompt = re.sub(self.tag_pattern, "", text)
+        plain_prompt = self.tag_pattern.sub("", text)
         return (model_lora, clip_lora, plain_prompt)
 
 NODE_CLASS_MAPPINGS = {
